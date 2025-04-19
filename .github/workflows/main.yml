@@ -7,6 +7,16 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/workflows/issue.yml'
       - '**.md'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (debug/release/both)'
+        required: true
+        default: 'both'
+      skip_telegram:
+        description: 'Skip Telegram notification (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   build:
@@ -16,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest ]
-    if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') }}
+    if: ${{ !startsWith(github.event.head_commit.message, '[skip ci]') || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - name: Checkout
@@ -35,7 +45,7 @@ jobs:
           java-version: '21'
 
       - name: Write key
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        if: (github.event_name != 'pull_request' && github.ref == 'refs/heads/master') || github.event_name == 'workflow_dispatch'
         run: |
           echo officialBuild=true >> local.properties
           echo buildWithGitSuffix=true >> local.properties
@@ -62,38 +72,41 @@ jobs:
 
       - name: Build release
         id: buildRelease
+        if: ${{ inputs.build_type == 'both' || inputs.build_type == 'release' }}
         run: |
           ./gradlew :app:buildRelease
           echo "releaseName=$(ls app/build/apk/release/HMA*-release.apk | awk -F '(/|.apk)' '{print $5}')" >> $GITHUB_OUTPUT
 
       - name: Build debug
         id: buildDebug
+        if: ${{ inputs.build_type == 'both' || inputs.build_type == 'debug' }}
         run: |
           ./gradlew :app:buildDebug
           echo "debugName=$(ls app/build/apk/debug/HMA*-debug.apk | awk -F '(/|.apk)' '{print $5}')" >> $GITHUB_OUTPUT
 
       - name: Upload release
-        if: success()
+        if: success() && (inputs.build_type == 'both' || inputs.build_type == 'release')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.buildRelease.outputs.releaseName }}
           path: "app/build/apk/release/HMA*-release.apk"
 
       - name: Upload debug
-        if: success()
+        if: success() && (inputs.build_type == 'both' || inputs.build_type == 'debug')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.buildDebug.outputs.debugName }}
           path: "app/build/apk/debug/HMA*-debug.apk"
 
       - name: Upload mappings
+        if: ${{ inputs.build_type == 'both' || inputs.build_type == 'release' }}
         uses: actions/upload-artifact@v4
         with:
           name: mappings
           path: "app/build/outputs/mapping/release"
 
       - name: Post to group
-        if: ${{ github.event_name != 'pull_request' && success() && github.ref == 'refs/heads/master' }}
+        if: ${{ (github.event_name != 'pull_request' && success() && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_dispatch' && success() && inputs.skip_telegram != 'true') }}
         env:
           CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL }}
           TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC }}
