@@ -20,7 +20,7 @@ on:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }}
+    name: Build on Ubuntu
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -56,31 +56,39 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build with Gradle
+      - name: Build Release
+        if: ${{ inputs.build_type == 'both' || inputs.build_type == 'release' }}
         run: |
-          ./gradlew :app:assemble${{ inputs.build_type == 'both' ? 'Release assembleDebug' : inputs.build_type }} \
+          ./gradlew :app:assembleRelease \
             --no-daemon \
             --stacktrace \
-            --info \
-            --scan
+            --info
 
-      - name: Upload artifacts
+      - name: Build Debug
+        if: ${{ inputs.build_type == 'both' || inputs.build_type == 'debug' }}
+        run: |
+          ./gradlew :app:assembleDebug \
+            --no-daemon \
+            --stacktrace \
+            --info
+
+      - name: Upload Release Artifact
+        if: ${{ (inputs.build_type == 'both' || inputs.build_type == 'release') && success() }}
         uses: actions/upload-artifact@v4
         with:
-          name: app-build-outputs
-          path: |
-            app/build/apk/
-            app/build/outputs/mapping/release/
-          if-no-files-found: error
+          name: release-apk
+          path: app/build/apk/release/*.apk
 
-      - name: Post to Telegram
-        if: ${{ (github.event_name != 'pull_request' && github.ref == 'refs/heads/master') || (github.event_name == 'workflow_dispatch' && inputs.skip_telegram != 'true') }}
-        uses: appleboy/telegram-action@master
+      - name: Upload Debug Artifact
+        if: ${{ (inputs.build_type == 'both' || inputs.build_type == 'debug') && success() }}
+        uses: actions/upload-artifact@v4
         with:
-          to: ${{ secrets.TELEGRAM_CHANNEL }}
-          message: |
-            *Build Completed* ✅
-            - Workflow: ${{ github.workflow }}
-            - Commit: ${{ github.sha }}
-            - Result: ${{ job.status }}
-          token: ${{ secrets.TELEGRAM_TOKEN }}
+          name: debug-apk
+          path: app/build/apk/debug/*.apk
+
+      - name: Upload Mappings
+        if: ${{ (inputs.build_type == 'both' || inputs.build_type == 'release') && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mappings
+          path: app/build/outputs/mapping/release/
