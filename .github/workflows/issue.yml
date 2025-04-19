@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       force_full_scan:
-        description: 'Tüm açık issue\'ları taramaya zorla (true/false)'
+        description: 'Tüm açık issue'ları taramaya zorla (true/false)'
         required: false
         default: 'false'
 
