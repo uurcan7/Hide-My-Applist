@@ -35,9 +35,6 @@ jobs:
           submodules: 'recursive'
           fetch-depth: 0
 
-      - name: Gradle wrapper validation
-        uses: gradle/wrapper-validation-action@v3
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -74,14 +71,14 @@ jobs:
         id: buildRelease
         if: ${{ inputs.build_type == 'both' || inputs.build_type == 'release' }}
         run: |
-          ./gradlew :app:buildRelease
+          ./gradlew :app:buildRelease || exit 1
           echo "releaseName=$(ls app/build/apk/release/HMA*-release.apk | awk -F '(/|.apk)' '{print $5}')" >> $GITHUB_OUTPUT
 
       - name: Build debug
         id: buildDebug
         if: ${{ inputs.build_type == 'both' || inputs.build_type == 'debug' }}
         run: |
-          ./gradlew :app:buildDebug
+          ./gradlew :app:buildDebug || exit 1
           echo "debugName=$(ls app/build/apk/debug/HMA*-debug.apk | awk -F '(/|.apk)' '{print $5}')" >> $GITHUB_OUTPUT
 
       - name: Upload release
