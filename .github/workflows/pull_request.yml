@@ -1,6 +1,13 @@
 name: Pull Request
 
-on: pull_request
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      skip_docs_check:
+        description: 'Skip docs check (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   build:
@@ -10,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest ]
-    if: ${{ !startsWith(github.event.head_commit.message, 'docs:') }}
+    if: ${{ !startsWith(github.event.head_commit.message, 'docs:') || inputs.skip_docs_check == 'true' }}
 
     steps:
       - name: Check out
@@ -42,3 +49,9 @@ jobs:
         run: |
           ./gradlew :app:assembleDebug
           echo "debugName=$(ls app/build/apk/debug/HMA*-debug.apk | awk -F '(/|.apk)' '{print $6}')" >> $GITHUB_OUTPUT
+
+      - name: Upload debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.buildDebug.outputs.debugName }}
+          path: "app/build/apk/debug/HMA*-debug.apk"
