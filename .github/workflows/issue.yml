@@ -2,33 +2,47 @@ name: Issue check
 
 on:
   schedule:
-  - cron: "0 0 */15 * *"
+    - cron: "0 0 */15 * *"
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      force_full_scan:
+        description: 'Tüm açık issue\'ları taramaya zorla (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     steps:
     - name: Check title and version requirement
-      if: github.event_name == 'issues'
+      if: github.event_name == 'issues' || inputs.force_full_scan == 'true'
       uses: actions/github-script@v7.0.1
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
+          const scanAll = '${{ inputs.force_full_scan }}' === 'true';
+          
           let response = await github.rest.issues.listForRepo({
             owner: context.repo.owner,
             repo: context.repo.repo,
             state: 'open'
           });
+          
           let data = response['data'];
+          
+          if (!scanAll && github.event_name === 'issues') {
+            data = [github.event.issue];
+          }
+
           data.forEach(function(issue){
             var title = issue['title'];
             var body = issue['body'];
             var labels = issue['labels'];
             var spam = false;
             var invalid = false;
+            
             for(var i=0,l=labels.length;i<l;i++){
               if(labels[i]['name'] == 'bug'){
                  if(title.substr(0, 5) !== '[Bug]' || title.trim() == '[Bug]' || title.toLowerCase().includes('hide root')){
@@ -39,43 +53,51 @@ jobs:
                  }
               }
             }
+            
             if(spam){
-                var id = issue['number'];
                 github.rest.issues.addLabels({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    issue_number: id,
+                    issue_number: issue.number,
                     labels: ["spam"]
                 });
             }
             if(invalid){
-                var id = issue['number'];
                 github.rest.issues.addLabels({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    issue_number: id,
+                    issue_number: issue.number,
                     labels: ["invalid"]
                 });
             }  
           });
+
     - name: Close spam and invalid
-      if: github.event_name == 'issues'
+      if: github.event_name == 'issues' || inputs.force_full_scan == 'true'
       uses: actions/github-script@v7.0.1
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
         script: |
+          const scanAll = '${{ inputs.force_full_scan }}' === 'true';
+          
           let response = await github.rest.issues.listForRepo({
             owner: context.repo.owner,
             repo: context.repo.repo,
             state: 'open'
           });
+          
           let data = response['data'];
           
+          if (!scanAll && github.event_name === 'issues') {
+            data = [github.event.issue];
+          }
+
           data.forEach(function(issue){
             var labels = issue['labels'];
             var close = false;
             var lock = false;
             var rmbug = false;
+            
             for(var i=0,l=labels.length;i<l;i++){
                 if(labels[i]['name'] == 'invalid' || labels[i]['name'] == 'spam'){
                     close = true;
@@ -87,41 +109,44 @@ jobs:
                     rmbug = true;
                 }
             }
+            
             if(close){
-                var id = issue['number'];
                 github.rest.issues.createComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
-                    issue_number: id,
+                    issue_number: issue.number,
                     body: 'This issue has been marked as **spam** or **invalid**. For feedback please **follow the rules in the report form**, then open a new issue.'
                 });
+                
                 if(rmbug){
                   github.rest.issues.removeLabel({
                       owner: context.repo.owner,
                       repo: context.repo.repo,
-                      issue_number: id,
+                      issue_number: issue.number,
                       name: 'bug'
                   });
                 }
+                
                 github.rest.issues.update({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  issue_number: id,
+                  issue_number: issue.number,
                   state: 'closed'
                 });
             }
+            
             if(lock){
-                var lid = issue['number'];
                 github.rest.issues.lock({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  issue_number: id,
+                  issue_number: issue.number,
                   lock_reason: "spam"
                 });
             }                
           });
+
     - name: Close stale
-      if: github.event_name != 'issues'
+      if: github.event_name != 'issues' && inputs.force_full_scan != 'true'
       uses: actions/stale@v9.0.1
       with:
         days-before-stale: 14
@@ -130,4 +155,3 @@ jobs:
         only-labels: bug
         days-before-close: 28
         close-issue-message: It has not been updated for 28 days, so it was automatically closed. Open a new Issue if necessary.
-        
